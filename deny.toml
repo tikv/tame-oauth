@@ -11,9 +11,14 @@ ignore = []
 
 [bans]
 multiple-versions = "deny"
-deny = [{ name = "openssl" }, { name = "openssl-sys" }]
-skip = []
-skip-tree = []
+skip = [
+    # most crates still reference the pre 1.0 version
+    { name = "cfg-if", version = "=0.1.10" },
+]
+skip-tree = [
+    # hyper (via h2) uses an outdated version
+    { name = "pin-project", version = "=0.4.27" },
+]
 
 [licenses]
 unlicensed = "deny"
@@ -33,23 +38,6 @@ exceptions = [
         "Zlib",
     ], name = "tinyvec" },
 ]
-
-[[licenses.clarify]]
-name = "ring"
-# SPDX considers OpenSSL to encompass both the OpenSSL and SSLeay licenses
-# https://spdx.org/licenses/OpenSSL.html
-# ISC - Both BoringSSL and ring use this for their new files
-# MIT - "Files in third_party/ have their own licenses, as described therein. The MIT
-# license, for third_party/fiat, which, unlike other third_party directories, is
-# compiled into non-test libraries, is included below."
-# OpenSSL - Obviously
-expression = "ISC AND MIT AND OpenSSL"
-license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
-
-[[licenses.clarify]]
-name = "encoding_rs"
-expression = "(Apache-2.0 OR MIT) AND BSD-3-Clause"
-license-files = [{ path = "COPYRIGHT", hash = 0x39f8ad31 }]
 
 [[licenses.clarify]]
 name = "webpki"

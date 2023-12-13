@@ -19,10 +19,10 @@ pub enum Error {
     Auth(AuthError),
     /// The RSA key seems valid, but is unable to sign a payload
     #[cfg(feature = "jwt")]
-    InvalidRsaKey(ring::error::Unspecified),
+    InvalidRsaKey,
     /// The RSA key is invalid and cannot be used to sign
     #[cfg(feature = "jwt")]
-    InvalidRsaKeyRejected(ring::error::KeyRejected),
+    InvalidRsaKeyRejected,
     /// A mutex has been poisoned due to a panic while a lock was held
     Poisoned,
     /// An I/O error occurred when reading credentials
@@ -54,9 +54,9 @@ impl fmt::Display for Error {
             Json(err) => write!(f, "{}", err),
             Auth(err) => write!(f, "{}", err),
             #[cfg(feature = "jwt")]
-            InvalidRsaKey(_err) => f.write_str("RSA key is invalid"),
+            InvalidRsaKey => f.write_str("RSA key is invalid"),
             #[cfg(feature = "jwt")]
-            InvalidRsaKeyRejected(err) => write!(f, "RSA key is invalid: {}", err),
+            InvalidRsaKeyRejected => write!(f, "RSA key is invalid"),
             Poisoned => f.write_str("A mutex is poisoned"),
             #[cfg(feature = "gcp")]
             Io(inner) => write!(f, "{}", inner),
