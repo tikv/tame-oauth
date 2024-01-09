@@ -12,13 +12,14 @@ pub(crate) struct Claims {
     pub(crate) expiration: i64,
     #[serde(rename = "iat")]
     pub(crate) issued_at: i64,
-    pub(crate) sub: Option<String>,
+    #[serde(rename = "sub")]
+    pub(crate) subject: Option<String>,
     pub(crate) scope: String,
 }
 
 /// A basic JWT header, the alg defaults to HS256 and typ is automatically
 /// set to `JWT`. All the other fields are optional.
-#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct Header {
     /// The type of JWS: it can only be "JWT" here
     ///
@@ -79,9 +80,12 @@ impl Default for Header {
 }
 
 /// The algorithms supported for signing/verifying
-#[derive(Debug, PartialEq, Copy, Clone, Serialize, serde::Deserialize)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize, serde::Deserialize)]
+#[allow(clippy::upper_case_acronyms)]
+#[derive(Default)]
 pub enum Algorithm {
     /// HMAC using SHA-256
+    #[default]
     HS256,
     /// HMAC using SHA-384
     HS384,
@@ -108,13 +112,7 @@ pub enum Algorithm {
     PS512,
 }
 
-impl Default for Algorithm {
-    fn default() -> Self {
-        Algorithm::HS256
-    }
-}
-
-/// The supported RSA key formats, see the documentation for ring::signature::RsaKeyPair
+/// The supported RSA key formats, see the documentation for [`ring::signature::RsaKeyPair`]
 /// for more information
 pub enum Key<'a> {
     /// An unencrypted PKCS#8-encoded key. Can be used with both ECDSA and RSA
@@ -124,15 +122,12 @@ pub enum Key<'a> {
 
 /// Serializes to JSON and encodes to base64
 pub fn to_jwt_part<T: Serialize>(input: &T) -> Result<String, Error> {
-    let encoded = serde_json::to_string(input)?;
-    Ok(base64::encode_config(
-        encoded.as_bytes(),
-        base64::URL_SAFE_NO_PAD,
-    ))
+    let json = serde_json::to_string(input)?;
+    Ok(data_encoding::BASE64URL_NOPAD.encode(json.as_bytes()))
 }
 
 /// The actual RSA signing + encoding
-/// Taken from Ring doc https://briansmith.org/rustdoc/ring/signature/index.html
+/// Taken from Ring doc <https://briansmith.org/rustdoc/ring/signature/index.html>
 fn sign_rsa(
     alg: MessageDigest,
     key: Key<'_>,
@@ -148,7 +143,7 @@ fn sign_rsa(
     let _ = signer.update(signing_input.as_bytes()).map_err(|_| Error::InvalidRsaKey)?;
     let signature = signer.sign_to_vec().map_err(|_| Error::InvalidRsaKey)?;
 
-    Ok(base64::encode_config(&signature, base64::URL_SAFE_NO_PAD))
+    Ok(data_encoding::BASE64_NOPAD.encode(&signature))
 }
 
 /// Take the payload of a JWT, sign it using the algorithm given and return
@@ -166,7 +161,7 @@ pub fn encode<T: Serialize>(header: &Header, claims: &T, key: Key<'_>) -> Result
     let encoded_header = to_jwt_part(&header)?;
     let encoded_claims = to_jwt_part(&claims)?;
     let signing_input = [encoded_header.as_ref(), encoded_claims.as_ref()].join(".");
-    let signature = sign(&*signing_input, key, header.alg)?;
+    let signature = sign(&signing_input, key, header.alg)?;
 
     Ok([signing_input, signature].join("."))
 }
@@ -177,10 +172,10 @@ mod test {
         use super::{sign, Key, Algorithm};
         let signing_intput = "test data";
         let enckey = "MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDX1h/UiSbHBf3c5L3hAb4QUZ5/nL9CTY11m8uXmWAGaAhjlE7vv15jTaxhjKm+RpfJW3shZao0lxSJgayYY8Ub5Kx3npPfToff/N/sBV7RmZ4FYb6b1XsZpjTy4Bt1LpRtSq/L4lH+boPGCBdJv7uwJkdBTRPBJRnynlpNOreJ08fo80G6qaQn2ZA3P8YusonIS72hW+tdnhrrpxvbIJT/NN2dFfVXxs3KkL6Qu3FuaqvEARqdjuPOdjDkDRwA4gfTlagGPtJVQ4gUl6rgXRTX2o0iGLXIxehHfLrbYP5UOjrfpAiTRdf+E3Ho5KJps09MrHk5yVzauKEUauJ9M+a3AgMBAAECggEBALvM1GVZ8SO7UuihH5ZorbgFTKQ8/y3xzORIax29lo/8dVAv+38gRECjlRpMCmZFhkzuDHVCwJaB3pzG+CagqSFcF7T9hi0HZ7K9lRkIkzhNMfH82p09Y58tv2SVG08a+IsgMVZ11mJMRtxIrfq9mdHrfJSVPFsSrUEuB+Sq8og45KpU/kcPQQ+nlCKzrXwgMi2cqj+cb+9/jnm200VRUFq2iC3lLKtyhVhluCzg0ecpSIpIFHB8mNgDiiLrmV99UCeVoa/E2MrZQTpzQeCA52pIBvMf8LEDLjRNrWq+HRxANuTrPYRJRLlDhVVKwXW5bCLZBvTFXHmV8ejFOsaZQAECgYEA81UftXi+BbXTxdgexBYms4h77KWJTLh5H12MU/U6epfsiZSq7OeWO9sOchUNUK8v3sUDL7FZPg/vSEIbkp5KQzbX6poy/uVrzL7niR+bJGssycaxxGsFJ6QZIMVtlPpLVcBAU96c1fhqMYs85/obVNZSY47qMBeSEZfEP849wzcCgYEA4xKP2I7cWsl42B3fbVaLoQiUhZRbvnvYRyZb8ZOPz4DSqKDHt6CbO7D3vL2mqcL8hqi40tJGRRztU+quUiudA16CzFacmHdgJ0cWJWY9cz9bXofDAtEFkY5u8XbeZu806iCsPh4TRmRwXmw8dOckCZAv8tcQOo7rdxIYin7juIECgYEAkqUSXwNNQZO69NiyceoHmNsAFDYO8LWcCVMPZum7PHaijqeR+wP2fkweAJK/W4i4iMCikvOGnOhthFaS12Gdz7QVm8UiRots1A+Y6gKqNOCCNXgRWhZFHQbAPge9arMNA7jBC8p1Kl5zYThQlF0ea5pePLG8YQ9TcFbOZsWcYzECgYEAsRJufe+ZwmpOBCn3a2oL5H2uZCR3DqnA1GsDU/VANg49OCZ416c0pm2wIsy5xLQ6/D9iMXSsO4T9RW1Clu1Puarf0LzRzMt6feafTHbYAKEtfR/dYLri3sj1lvKdKCPtXY4xAxes7D2yqs84rej5X0PDQFmZXDDLScUgwg+FQQECgYBFaDzuYxNpiBG6RzFiaNfaJ1GNuIZgkI86HTwSma2XttuiOGpgWumfz0JPwercewKNhyu/2QkavPQlf6OQ7gbeOrA+LqEisLkyBSwzFghQItU7/OoTspe1P4+yVEbNGD3bSNsu1xe5p3mSw8/tVQWfhniMeji3k4Lv96kLfYXcZA==";
-        let pkey = base64::decode_config(enckey.as_bytes(), base64::STANDARD).unwrap();
+        let pkey = data_encoding::BASE64.decode(enckey.as_bytes()).unwrap();
         let signature = sign(signing_intput, Key::Pkcs8(&pkey), Algorithm::RS256).unwrap();
         // tested by origin branch
-        let expected_signature = String::from("DJW80W1MFFp-GAB3dh_TIfwXykHiuzLPuaJaHLVL6qVoCQg2go9cfiXfMS-x2Yp17e4B_bO5qO3ARyQZgIKwOnO-jzP5P0JKq14Ce6g04etxe9xg83iByZeZkf0UDGN6Mn8RLcK2SEECkztP8-aVHvmpTYE4zxRlb0hXxhIR8947LxK6C1ovCMBFBeMWzneYzLrioZSCDHZ9TeADk38zYsX8B6u9gsq1LGnwSaTqJlNiiq6g8iuDZ0cGtys9ovwyZqGG6XZubE8LkQhH8NMRk8KFonZDVI0Mj8WkbeHi8hTVdAuzP-jFiaBMwqzfshhvnDfgV3z3RKp3zpiJNutLNg");
+        let expected_signature = String::from("DJW80W1MFFp+GAB3dh/TIfwXykHiuzLPuaJaHLVL6qVoCQg2go9cfiXfMS+x2Yp17e4B/bO5qO3ARyQZgIKwOnO+jzP5P0JKq14Ce6g04etxe9xg83iByZeZkf0UDGN6Mn8RLcK2SEECkztP8+aVHvmpTYE4zxRlb0hXxhIR8947LxK6C1ovCMBFBeMWzneYzLrioZSCDHZ9TeADk38zYsX8B6u9gsq1LGnwSaTqJlNiiq6g8iuDZ0cGtys9ovwyZqGG6XZubE8LkQhH8NMRk8KFonZDVI0Mj8WkbeHi8hTVdAuzP+jFiaBMwqzfshhvnDfgV3z3RKp3zpiJNutLNg");
         assert_eq!(signature, expected_signature);
     }
 }

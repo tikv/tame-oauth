@@ -2,67 +2,96 @@ use std::{error::Error as Err, fmt};
 
 #[derive(Debug)]
 pub enum Error {
-    Io(std::io::Error),
+    /// The private_key field in the [Service Account Key](https://cloud.google.com/iam/docs/creating-managing-service-account-keys)
+    /// is invalid and cannot be parsed
     #[cfg(feature = "jwt")]
     InvalidKeyFormat,
-    Base64Decode(base64::DecodeError),
+    /// Unable to deserialize the base64 encoded RSA key
+    Base64Decode(data_encoding::DecodeError),
+    /// An error occurred trying to create an HTTP request
     Http(http::Error),
+    /// Failed to authenticate and retrieve an oauth token, and were unable to
+    /// deserialize a more exact reason from the error response
     HttpStatus(http::StatusCode),
+    /// Failed to de/serialize JSON
     Json(serde_json::Error),
-    AuthError(AuthError),
+    /// Failed to authenticate and retrieve an oauth token
+    Auth(AuthError),
+    /// The RSA key seems valid, but is unable to sign a payload
     #[cfg(feature = "jwt")]
     InvalidRsaKey,
+    /// The RSA key is invalid and cannot be used to sign
+    #[cfg(feature = "jwt")]
+    InvalidRsaKeyRejected,
+    /// A mutex has been poisoned due to a panic while a lock was held
+    Poisoned,
+    /// An I/O error occurred when reading credentials
+    #[cfg(feature = "gcp")]
+    Io(std::io::Error),
+    /// Failed to load valid credentials from a file on disk
+    #[cfg(feature = "gcp")]
+    InvalidCredentials {
+        file: std::path::PathBuf,
+        error: Box<Error>,
+    },
+    /// An error occurred due to [`SystemTime`](std::time::SystemTime)
+    SystemTime(std::time::SystemTimeError),
+    /// Unable to parse the returned token
+    InvalidTokenFormat,
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #![allow(clippy::enum_glob_use)]
         use Error::*;
 
         match self {
-            Io(err) => write!(f, "{}", err),
             #[cfg(feature = "jwt")]
             InvalidKeyFormat => f.write_str("The key format is invalid or unknown"),
             Base64Decode(err) => write!(f, "{}", err),
             Http(err) => write!(f, "{}", err),
             HttpStatus(sc) => write!(f, "HTTP error status: {}", sc),
             Json(err) => write!(f, "{}", err),
-            AuthError(err) => write!(f, "{}", err),
+            Auth(err) => write!(f, "{}", err),
             #[cfg(feature = "jwt")]
             InvalidRsaKey => f.write_str("RSA key is invalid"),
+            #[cfg(feature = "jwt")]
+            InvalidRsaKeyRejected => write!(f, "RSA key is invalid"),
+            Poisoned => f.write_str("A mutex is poisoned"),
+            #[cfg(feature = "gcp")]
+            Io(inner) => write!(f, "{}", inner),
+            #[cfg(feature = "gcp")]
+            InvalidCredentials { file, error } => {
+                write!(f, "Invalid credentials in '{}': {}", file.display(), error)
+            }
+            SystemTime(te) => {
+                write!(f, "System Time error: {}", te)
+            }
+            InvalidTokenFormat => {
+                write!(f, "Invalid token format")
+            }
         }
     }
 }
 
 impl std::error::Error for Error {
-    fn cause(&self) -> Option<&dyn Err> {
-        use Error::*;
-
-        match self {
-            Io(err) => Some(err as &dyn Err),
-            Base64Decode(err) => Some(err as &dyn Err),
-            Http(err) => Some(err as &dyn Err),
-            Json(err) => Some(err as &dyn Err),
-            AuthError(err) => Some(err as &dyn Err),
-            _ => None,
-        }
-    }
-
     fn source(&self) -> Option<&(dyn Err + 'static)> {
+        #![allow(clippy::enum_glob_use)]
         use Error::*;
 
         match self {
-            Io(err) => Some(err as &dyn Err),
             Base64Decode(err) => Some(err as &dyn Err),
             Http(err) => Some(err as &dyn Err),
             Json(err) => Some(err as &dyn Err),
-            AuthError(err) => Some(err as &dyn Err),
+            Auth(err) => Some(err as &dyn Err),
+            SystemTime(err) => Some(err as &dyn Err),
             _ => None,
         }
     }
 }
 
-impl From<base64::DecodeError> for Error {
-    fn from(e: base64::DecodeError) -> Self {
+impl From<data_encoding::DecodeError> for Error {
+    fn from(e: data_encoding::DecodeError) -> Self {
         Error::Base64Decode(e)
     }
 }
@@ -79,12 +108,18 @@ impl From<serde_json::Error> for Error {
     }
 }
 
+impl From<std::time::SystemTimeError> for Error {
+    fn from(e: std::time::SystemTimeError) -> Self {
+        Error::SystemTime(e)
+    }
+}
+
 #[derive(serde::Deserialize, Debug)]
 pub struct AuthError {
     /// Top level error type
-    error: Option<String>,
+    pub error: Option<String>,
     /// More specific details on the error
-    error_description: Option<String>,
+    pub error_description: Option<String>,
 }
 
 impl fmt::Display for AuthError {

@@ -1,7 +1,10 @@
 [package]
 name = "tame-oauth"
-version = "0.4.7"
-authors = ["Embark <opensource@embark-studios.com>", "Jake Shadle <jake.shadle@embark-studios.com>"]
+version = "0.9.6"
+authors = [
+    "Embark <opensource@embark-studios.com>",
+    "Jake Shadle <jake.shadle@embark-studios.com>",
+]
 edition = "2018"
 description = "A (very) simple oauth 2.0 library"
 license = "MIT OR Apache-2.0"
@@ -9,6 +12,7 @@ documentation = "https://docs.rs/tame-oauth"
 homepage = "https://github.com/EmbarkStudios/tame-oauth"
 repository = "https://github.com/EmbarkStudios/tame-oauth"
 keywords = ["oauth", "tame", "sans-io", "gcp"]
+categories = ["authentication"]
 readme = "README.md"
 
 [badges]
@@ -18,9 +22,17 @@ maintenance = { status = "actively-developed" }
 doctest = false
 path = "src/lib.rs"
 
+[features]
+# This library was first created to support GCP oauth, if we add support for
+# other oauth providers this will most likely change to not have any default features
+default = ["gcp"]
+# Supports for GCP oauth2
+gcp = ["jwt", "url"]
+# Support for Json Web Tokens, openssl is used for signing
+jwt = ["openssl"]
+
 [dependencies]
-base64 = "0.13" # Keep aligned with rustls
-chrono = "0.4"
+data-encoding = "2.4"
 http = "0.2"
 lock_api = "0.4"
 parking_lot = "0.11"
@@ -39,7 +51,5 @@ features = ["rustls-tls"]
 version = "1.0"
 features = ["macros", "rt-multi-thread"]
 
-[features]
-default = ["gcp"]
-gcp = ["jwt", "url"]
-jwt = ["openssl"]
+[dev-dependencies.bytes]
+version = "1.4"
